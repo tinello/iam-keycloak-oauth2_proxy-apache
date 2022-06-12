@@ -1,0 +1,65 @@
+version: "3.8"
+
+services:
+
+  keycloak:
+    image: "quay.io/keycloak/keycloak:18.0.0"
+    container_name: "keycloak"
+    ports:
+      # Port 8080 is used for Keycloak own dashboard
+      - "8080:8080"
+    volumes:
+      - "./keycloak/h2:/opt/keycloak/data/h2/"
+    command:
+      # start-dev: Inicia el server en modo develop.
+      # start: Inicia el server en modo produccion.
+      # build: Para setear configuraciones. Activar y desactivar features.
+      - "start-dev"
+    environment:
+      KEYCLOAK_ADMIN: 'admin'
+      KEYCLOAK_ADMIN_PASSWORD: 'admin'
+      #DB_VENDOR: 'h2'
+    networks: 
+      proxy:
+        aliases:
+            - idp.example.me
+    hostname: idp.example.me
+
+  httpd:
+    image: "httpd:2.4"
+    container_name: "apache_http"
+    ports:
+      # Port 80 is used for Apache HTTPD own web
+      - "81:80"
+    networks:
+      - proxy
+    depends_on:
+      - keycloak
+
+  oauth2-proxy:
+    container_name: oauth2-proxy
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.3.0
+    restart: unless-stopped
+    environment:
+      OAUTH2_PROXY_HTTP_ADDRESS: '0.0.0.0:4180'
+      OAUTH2_PROXY_EMAIL_DOMAINS: '*'
+      OAUTH2_PROXY_COOKIE_SECRET: '1234567890123456'
+      OAUTH2_PROXY_COOKIE_SECURE: 'false'
+      OAUTH2_PROXY_UPSTREAMS: 'http://httpd'
+      OAUTH2_PROXY_PROVIDER: 'oidc'
+      OAUTH2_PROXY_CLIENT_ID: 'oauth2-proxy'
+      OAUTH2_PROXY_CLIENT_SECRET: 'kIXJ2VklIRnY8zonhlBzBotHjnhOCKhL'
+      OAUTH2_PROXY_OIDC_ISSUER_URL: 'http://idp.example.me:8080/realms/Example'
+      OAUTH2_PROXY_REDIRECT_URL: 'http://example.me:80/oauth2/callback'
+    networks:
+      - proxy
+    depends_on:
+      - httpd
+      - keycloak
+    ports:
+      - 80:4180/tcp
+    
+networks:
+  proxy:
+    external: true
+    
